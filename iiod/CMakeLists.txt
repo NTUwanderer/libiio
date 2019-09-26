@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 2.8.7)
 project(iiod C)
 
+set(LIBIIO_VERSION_MAJOR 0)
+set(LIBIIO_VERSION_MINOR 18)
+set(VERSION "${LIBIIO_VERSION_MAJOR}.${LIBIIO_VERSION_MINOR}")
+
 include(FindBISON)
 include(FindFLEX)
 
@@ -13,6 +17,45 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 set(IIOD_CFILES iiod.c ops.c thread-pool.c ${BISON_parser_OUTPUTS} ${FLEX_lexer_OUTPUTS})
+set(IIOD_HEADERS parser.h)
+
+if(WITH_LOCAL_BACKEND)
+	add_definitions(-DLOCAL_BACKEND=1)
+	set(LIBIIO_CFILES ${LIBIIO_CFILES} local.c)
+
+	# Link with librt if present
+	find_library(LIBRT_LIBRARIES rt)
+	if (LIBRT_LIBRARIES)
+		set(LIBS_TO_LINK ${LIBS_TO_LINK} ${LIBRT_LIBRARIES})
+	endif()
+
+	option(WITH_LOCAL_CONFIG "Read local context attributes from /etc/libiio.ini" OFF)
+	if (WITH_LOCAL_CONFIG)
+		find_library(LIBINI_LIBRARIES ini)
+		find_path(LIBINI_INCLUDE_DIR ini.h)
+		if (NOT LIBINI_LIBRARIES OR NOT LIBINI_INCLUDE_DIR)
+			message(SEND_ERROR "WITH_LOCAL_CONFIG option requires libini to be installed")
+		else()
+			include_directories(${LIBINI_INCLUDE_DIR})
+			set(LIBS_TO_LINK ${LIBS_TO_LINK} ${LIBINI_LIBRARIES})
+		endif()
+	endif()
+endif()
+add_library(iioddd ${IIOD_CFILES} ${IIOD_HEADERS})
+set_target_properties(iioddd PROPERTIES
+	VERSION ${VERSION}
+	SOVERSION ${LIBIIO_VERSION_MAJOR}
+	FRAMEWORK TRUE
+    PUBLIC_HEADER ${IIOD_HEADERS}
+	C_STANDARD 99
+	C_STANDARD_REQUIRED ON
+	C_EXTENSIONS OFF
+)
+# target_link_libraries(iio LINK_PRIVATE ${LIBS_TO_LINK})
+
+# if (MSVC)
+# 	set_target_properties(iio PROPERTIES OUTPUT_NAME libiio)
+# endif()
 
 find_library(LIBAIO_LIBRARIES aio)
 find_path(LIBAIO_INCLUDE_DIR libaio.h)
